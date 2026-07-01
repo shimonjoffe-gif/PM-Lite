@@ -1,0 +1,1184 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum PlanType {
+  free
+  paid
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  review
+  done
+  cancelled
+}
+
+enum AbsenceKind {
+  vacation
+  sick
+  other
+}
+
+enum FeedbackType {
+  bug
+  feedback
+}
+
+enum PromptKey {
+  project_status
+  task_summary
+  task_suggest
+}
+
+enum FeatureKey {
+  project_create
+  project_archive
+  task_create
+  task_status_change
+  kanban_drag
+  calendar_view
+  resource_view
+  report_export
+  ai_project_status
+  ai_task_summary
+}
+
+enum ProjectMemberRole {
+  owner
+  admin
+  member
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum EffortUnit {
+  hours
+  days
+  weeks
+}
+
+enum TaskType {
+  task
+  milestone
+  billable_stage
+  management
+}
+
+enum DependencyType {
+  FS
+  SS
+  FF
+  SF
+}
+
+enum ConstraintType {
+  asap
+  alap
+  snet
+  snlt
+  fnet
+  fnlt
+  exact
+  mso
+  mfo
+  hammock
+}
+
+enum WorkScheduleType {
+  five_two
+  two_two
+  six_one
+  custom
+}
+
+enum NonWorkingDayType {
+  holiday
+  extra_workday
+}
+
+enum NormParamType {
+  numeric
+  boolean
+  enum
+}
+
+enum DistributionRule {
+  uniform
+  front_loaded
+  back_loaded
+  s_curve
+  manual
+}
+
+enum PermissionKey {
+  // Проекты
+  project_view
+  project_create
+  project_edit
+  project_archive
+  // Задачи
+  task_view
+  task_create
+  task_edit
+  task_change_status
+  // Сроки / план
+  schedule_view
+  schedule_edit
+  // Бюджет
+  budget_view
+  budget_edit
+  // Команда / ресурсы
+  team_view
+  team_manage
+  // Отчёты
+  report_view
+  report_export
+  // AI
+  ai_use
+  // Шаблоны
+  template_view
+  template_manage
+  // Настройки организации
+  settings_manage
+  // Документы
+  document_view
+  document_upload
+  document_manage
+}
+
+enum StorageMode {
+  cloud
+  external
+}
+
+enum DocumentParentType {
+  project
+  task
+  client
+}
+
+// ─── Block 1: Core ────────────────────────────────────────────────────────────
+
+model Organization {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  slug              String     @unique
+  planType          PlanType   @default(free) @map("plan_type")
+  logoUrl           String?    @map("logo_url")
+  defaultEffortUnit EffortUnit @default(hours) @map("default_effort_unit")
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  users                 User[]
+  orgRoles              OrgRole[]
+  invitations           Invitation[]
+  clients               Client[]
+  projectStatuses       ProjectStatus[]
+  projects              Project[]
+  absences              Absence[]
+  departments           Department[]
+  absenceTypes          AbsenceType[]
+  absenceRequests       AbsenceRequest[]
+  aiPrompts             AiPrompt[]
+  aiSettings            OrgAiSetting[]
+  aiUsageLogs           AiUsageLog[]
+  featureUsageLogs      FeatureUsageLog[]
+  feedbacks             Feedback[]
+  taskStatusTransitions TaskStatusTransition[]
+  orgTaskTypes          OrgTaskType[]
+  workSchedule          WorkSchedule?
+  workSchedulePresets   WorkSchedulePreset[]
+  nonWorkingDays        NonWorkingDay[]
+  savedReports          SavedReport[]
+  normParams            NormParam[]
+  projectTemplates      ProjectTemplate[]
+  documentTypes         DocumentType[]
+  documents             Document[]
+  documentAccessRules   DocumentAccessRule[]
+  storageProviderSetting StorageProviderSetting?
+
+  @@map("organizations")
+}
+
+model User {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  email              String    @unique
+  passwordHash       String    @map("password_hash")
+  fullName           String    @map("full_name")
+  // Флаг системного администратора организации
+  isAdmin            Boolean   @default(false) @map("is_admin")
+  // Роль пользователя внутри организации (null только у admin)
+  orgRoleId          String?   @map("org_role_id") @db.Uuid
+  dailyCapacityHours Decimal   @default(8) @map("daily_capacity_hours") @db.Decimal(4, 2)
+  isActive           Boolean   @default(true) @map("is_active")
+  emailVerifiedAt    DateTime? @map("email_verified_at") @db.Timestamptz
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  departmentId       String?   @map("department_id") @db.Uuid
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgRole             OrgRole?             @relation(fields: [orgRoleId], references: [id], onDelete: SetNull)
+  department          Department?          @relation("UserDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  invitationsSent     Invitation[]         @relation("InvitedBy")
+  passwordResetTokens PasswordResetToken[]
+  ownedProjects       Project[]            @relation("ProjectOwner")
+  createdProjects     Project[]            @relation("ProjectCreator")
+  assignedTasks       Task[]               @relation("TaskAssignee")
+  createdTasks        Task[]               @relation("TaskCreator")
+  comments            Comment[]
+  absences            Absence[]            @relation("UserAbsences")
+  createdAbsences     Absence[]            @relation("AbsenceCreator")
+  aiUsageLogs         AiUsageLog[]
+  featureUsageLogs    FeatureUsageLog[]
+  feedbacks           Feedback[]
+  projectMemberships  ProjectMember[]
+  notifications       Notification[]
+  columnPrefs         UserColumnPref[]
+  workSchedule        UserWorkSchedule?
+  savedReports        SavedReport[]
+  createdTemplates    ProjectTemplate[]  @relation("TemplateCreator")
+  timeEntries         TimeEntry[]
+  createdDocuments    Document[]         @relation("DocumentCreator")
+  documentVersions    DocumentVersion[]  @relation("VersionCreator")
+  headOfDepartments   Department[]       @relation("DepartmentHead")
+  absenceRequests     AbsenceRequest[]   @relation("RequestUser")
+  createdAbsenceRequests AbsenceRequest[] @relation("RequestCreator")
+  absenceRequestSteps AbsenceRequestStep[] @relation("StepApprover")
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+// ─── Roles & Permissions ─────────────────────────────────────────────────────
+
+model OrgRole {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  description    String?
+  // Системные роли создаются автоматически при регистрации орг.
+  // Их можно редактировать, но нельзя удалить
+  isSystem       Boolean  @default(false) @map("is_system")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions   RolePermission[]
+  users         User[]
+  invitations   Invitation[]
+  taskEfforts         TaskRoleEffort[]
+  effortPeriods       TaskEffortPeriod[]
+  documentAccessRules DocumentAccessRule[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("org_roles")
+}
+
+model RolePermission {
+  roleId     String        @map("role_id") @db.Uuid
+  permission PermissionKey
+
+  role OrgRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permission])
+  @@map("role_permissions")
+}
+
+// ─── Block 2: Auth ────────────────────────────────────────────────────────────
+
+model Invitation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  invitedBy      String    @map("invited_by") @db.Uuid
+  email          String
+  // Роль, которая будет присвоена при принятии инвайта
+  orgRoleId      String?   @map("org_role_id") @db.Uuid
+  token          String    @unique @default(dbgenerated("encode(gen_random_bytes(32), 'hex')"))
+  expiresAt      DateTime  @default(dbgenerated("(now() + INTERVAL '7 days')")) @map("expires_at") @db.Timestamptz
+  acceptedAt     DateTime? @map("accepted_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inviter      User         @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: Cascade)
+  orgRole      OrgRole?     @relation(fields: [orgRoleId], references: [id], onDelete: SetNull)
+
+  @@index([token])
+  @@map("invitations")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  token     String    @unique @default(dbgenerated("encode(gen_random_bytes(32), 'hex')"))
+  expiresAt DateTime  @default(dbgenerated("(now() + INTERVAL '1 hour')")) @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("password_reset_tokens")
+}
+
+// ─── Block 3: Projects ────────────────────────────────────────────────────────
+
+model Client {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  contactInfo    String?  @map("contact_info")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects     Project[]
+
+  @@index([organizationId])
+  @@map("clients")
+}
+
+model ProjectStatus {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  color          String   @default("#6B7280")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects     Project[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("project_statuses")
+}
+
+model Project {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  clientId       String?   @map("client_id") @db.Uuid
+  statusId       String?   @map("status_id") @db.Uuid
+  ownerId        String?   @map("owner_id") @db.Uuid
+  name           String
+  description    String?
+  startDate      DateTime? @map("start_date") @db.Date
+  endDate        DateTime? @map("end_date") @db.Date
+  isArchived           Boolean    @default(false) @map("is_archived")
+  budget               Decimal?   @db.Decimal(14, 2)
+  effortUnit           EffortUnit? @map("effort_unit")
+  schedulingPriority   Int        @default(0) @map("scheduling_priority")
+  sourceTemplateId     String?    @map("source_template_id") @db.Uuid
+  createdBy            String?    @map("created_by") @db.Uuid
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime   @default(now()) @map("updated_at") @db.Timestamptz
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  status       ProjectStatus? @relation(fields: [statusId], references: [id], onDelete: SetNull)
+  owner        User?          @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  creator      User?          @relation("ProjectCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  tasks        Task[]
+  boardColumns BoardColumn[]
+  members             ProjectMember[]
+  templateUsages      ProjectTemplateUsage[]
+  documents           Document[]
+  documentAccessRules DocumentAccessRule[]
+
+  @@index([organizationId])
+  @@index([ownerId])
+  @@index([clientId])
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String            @map("project_id") @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  role      ProjectMemberRole @default(member)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model BoardColumn {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId     String      @map("project_id") @db.Uuid
+  name          String
+  color         String?
+  sortOrder     Int         @default(0) @map("sort_order")
+  statusMapping TaskStatus? @map("status_mapping")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@map("board_columns")
+}
+
+// Разрешённые переходы статусов задач на уровне организации.
+// Если таблица пуста — все переходы разрешены.
+// allowedOrgRoleIds: JSON-массив UUID ролей, которым разрешён переход
+// (пустой массив / null = разрешено всем)
+model TaskStatusTransition {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String     @map("organization_id") @db.Uuid
+  fromStatus         TaskStatus @map("from_status")
+  toStatus           TaskStatus @map("to_status")
+  allowedOrgRoleIds  Json       @default("[]") @map("allowed_org_role_ids")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, fromStatus, toStatus])
+  @@index([organizationId])
+  @@map("task_status_transitions")
+}
+
+// ─── Block 4: Tasks ───────────────────────────────────────────────────────────
+
+model Task {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId     String     @map("project_id") @db.Uuid
+  parentId      String?    @map("parent_id") @db.Uuid
+  assigneeId    String?    @map("assignee_id") @db.Uuid
+  boardColumnId    String?         @map("board_column_id") @db.Uuid
+  title            String
+  description      String?
+  status           TaskStatus      @default(todo)
+  priority         TaskPriority    @default(medium)
+  taskType         TaskType        @default(task) @map("task_type")
+  constraintType   ConstraintType? @map("constraint_type")
+  constraintDate   DateTime?       @map("constraint_date") @db.Date
+  queueOrder           Int?            @map("queue_order")
+  effortHours          Decimal?        @map("effort_hours") @db.Decimal(6, 2)
+  amount               Decimal?        @db.Decimal(14, 2)
+  sourceTemplateTaskId String?         @map("source_template_task_id") @db.Uuid
+  sourceTemplateId     String?         @map("source_template_id") @db.Uuid
+  startDate        DateTime?       @map("start_date") @db.Date
+  dueDate          DateTime?       @map("due_date") @db.Date
+  percentComplete  Int             @default(0) @map("percent_complete")
+  baselineStart    DateTime?       @map("baseline_start") @db.Date
+  baselineFinish   DateTime?       @map("baseline_finish") @db.Date
+  duration         Int?            // planned duration in working days (CPM)
+  sortOrder        Int             @default(0) @map("sort_order")
+  createdBy        String?         @map("created_by") @db.Uuid
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime   @default(now()) @map("updated_at") @db.Timestamptz
+
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent         Task?          @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children       Task[]         @relation("TaskHierarchy")
+  assignee       User?          @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  boardColumn    BoardColumn?   @relation(fields: [boardColumnId], references: [id], onDelete: SetNull)
+  creator        User?          @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  comments       Comment[]
+  dependencies   TaskDependency[] @relation("DependentTask")
+  dependents     TaskDependency[] @relation("PredecessorTask")
+  roleEfforts    TaskRoleEffort[]
+  effortPeriods  TaskEffortPeriod[]
+  timeEntries    TimeEntry[]
+
+  @@index([projectId])
+  @@index([parentId])
+  @@index([assigneeId])
+  @@index([assigneeId, queueOrder])
+  @@map("tasks")
+}
+
+model TaskDependency {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  taskId          String         @map("task_id") @db.Uuid
+  predecessorId   String         @map("predecessor_id") @db.Uuid
+  type            DependencyType @default(FS)
+  lagDays         Int            @default(0) @map("lag_days")
+
+  task        Task @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+  predecessor Task @relation("PredecessorTask", fields: [predecessorId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, predecessorId])
+  @@index([taskId])
+  @@index([predecessorId])
+  @@map("task_dependencies")
+}
+
+// Custom task types per org (extends system TaskType enum)
+model OrgTaskType {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  color          String   @default("#6B7280")
+  isSystem       Boolean  @default(false) @map("is_system")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("org_task_types")
+}
+
+// Named schedule presets: isSystem=true → built-in (5/2, 2/2, Сокращённый); false → org custom
+model WorkSchedulePreset {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String?          @map("organization_id") @db.Uuid // null = system preset
+  name            String
+  scheduleType    WorkScheduleType @default(custom) @map("schedule_type")
+  hoursPerDay     Decimal          @default(8) @map("hours_per_day") @db.Decimal(4, 2)
+  hoursPerDayMap  Json?            @map("hours_per_day_map") // {1:8.5,2:8.5,3:8.5,4:8.5,5:6} per-weekday override; null = uniform
+  workDays        Json             @default("[1,2,3,4,5]") @map("work_days") // weekday numbers 1=Mon…7=Sun; null-ish for shift
+  cycleDays       Int?             @map("cycle_days")       // total cycle length (e.g. 4 for 2/2)
+  workDaysInCycle Int?             @map("work_days_in_cycle") // working days per cycle (e.g. 2 for 2/2)
+  isSystem        Boolean          @default(false) @map("is_system")
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  organization   Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userSchedules  UserWorkSchedule[]
+
+  @@index([organizationId])
+  @@map("work_schedule_presets")
+}
+
+// Org-level work schedule (default for all users)
+model WorkSchedule {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String           @unique @map("organization_id") @db.Uuid
+  scheduleType   WorkScheduleType @default(five_two) @map("schedule_type")
+  hoursPerDay    Decimal          @default(8) @map("hours_per_day") @db.Decimal(4, 2)
+  workDays       Json             @default("[1,2,3,4,5]") @map("work_days") // array of weekday numbers (1=Mon)
+  shiftStart     String           @default("09:00") @map("shift_start") // HH:MM
+  shiftEnd       String           @default("18:00") @map("shift_end")
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("work_schedules")
+}
+
+// Per-user work schedule override
+model UserWorkSchedule {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String           @unique @map("user_id") @db.Uuid
+  presetId       String?          @map("preset_id") @db.Uuid // link to WorkSchedulePreset (null = fully custom)
+  name           String?          // custom schedule display name
+  scheduleType   WorkScheduleType @default(five_two) @map("schedule_type")
+  hoursPerDay    Decimal          @default(8) @map("hours_per_day") @db.Decimal(4, 2)
+  hoursPerDayMap Json?            @map("hours_per_day_map") // per-weekday hours override; null = uniform
+  workDays       Json             @default("[1,2,3,4,5]") @map("work_days")
+  shiftStart     String           @default("09:00") @map("shift_start")
+  shiftEnd       String           @default("18:00") @map("shift_end")
+  cycleStartDate DateTime?        @map("cycle_start_date") @db.Date // for shift schedules: rotation origin
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  user   User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preset WorkSchedulePreset?  @relation(fields: [presetId], references: [id], onDelete: SetNull)
+
+  @@map("user_work_schedules")
+}
+
+// Non-working days for an org (holidays, extra work days)
+model NonWorkingDay {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  date           DateTime          @db.Date
+  type           NonWorkingDayType @default(holiday)
+  name           String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, date])
+  @@index([organizationId, date])
+  @@map("non_working_days")
+}
+
+model Comment {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  taskId    String    @map("task_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  text      String
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime? @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("comments")
+}
+
+// ─── Block 4b: Notifications & User Prefs ────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  type      String
+  payload   Json
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model UserColumnPref {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tableName String   @map("table_name")
+  columns   Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tableName])
+  @@map("user_column_prefs")
+}
+
+// ─── Block 5: Resources ───────────────────────────────────────────────────────
+
+model Absence {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String      @map("user_id") @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  type           AbsenceKind @default(vacation)
+  startDate      DateTime    @map("start_date") @db.Date
+  endDate        DateTime    @map("end_date") @db.Date
+  notes          String?
+  createdBy      String?     @map("created_by") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  requestId      String?     @unique @map("request_id") @db.Uuid
+
+  user         User         @relation("UserAbsences", fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      User?        @relation("AbsenceCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  request      AbsenceRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("absences")
+}
+
+// ─── Departments ──────────────────────────────────────────────────────────────
+
+model Department {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String
+  parentId       String?      @map("parent_id") @db.Uuid
+  headUserId     String?      @map("head_user_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Department?  @relation("DeptChildren", fields: [parentId], references: [id])
+  children     Department[] @relation("DeptChildren")
+  headUser     User?        @relation("DepartmentHead", fields: [headUserId], references: [id], onDelete: SetNull)
+  members      User[]       @relation("UserDepartment")
+
+  @@index([organizationId])
+  @@map("departments")
+}
+
+// ─── Absence Types (configurable) ────────────────────────────────────────────
+
+model AbsenceType {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid  // null = global system type
+  code           String?  // 'vacation' | 'sick' | 'other' for system types
+  name           String
+  color          String   @default("#6B7280")
+  isSystem       Boolean  @default(false) @map("is_system")
+  approvalSteps  Json     @default("[]") @map("approval_steps")
+  // approvalSteps: [{order:1, role:'pm'|'line_manager'|'admin', action:'approve'|'notify'}]
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requests     AbsenceRequest[]
+
+  @@map("absence_types")
+}
+
+// ─── Absence Requests ─────────────────────────────────────────────────────────
+
+model AbsenceRequest {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  typeId         String   @map("type_id") @db.Uuid
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  notes          String?
+  status         String   @default("pending") // pending|approved|rejected|cancelled
+  currentStep    Int      @default(0) @map("current_step")
+  revision       Int      @default(1) // increments on each edit + approval reset
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User                 @relation("RequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy    User?                @relation("RequestCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  type         AbsenceType          @relation(fields: [typeId], references: [id])
+  steps        AbsenceRequestStep[]
+  absence      Absence?
+
+  @@index([organizationId])
+  @@index([userId])
+  @@map("absence_requests")
+}
+
+model AbsenceRequestStep {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId   String    @map("request_id") @db.Uuid
+  stepOrder   Int       @map("step_order")
+  approverId  String?   @map("approver_id") @db.Uuid
+  role        String    // 'pm' | 'line_manager' | 'admin'
+  action      String    // 'approve' | 'notify'
+  status      String    @default("pending") // pending|approved|rejected|notified|skipped
+  comment     String?
+  decidedAt   DateTime? @map("decided_at") @db.Timestamptz
+
+  request  AbsenceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approver User?          @relation("StepApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([requestId])
+  @@map("absence_request_steps")
+}
+
+// ─── Block 6: AI ──────────────────────────────────────────────────────────────
+
+model OrgAiSetting {
+  organizationId    String    @map("organization_id") @db.Uuid
+  promptKey         PromptKey @map("prompt_key")
+  isEnabled         Boolean   @default(true) @map("is_enabled")
+  dailyCallLimit    Int?      @map("daily_call_limit")
+  monthlyTokenLimit Int?      @map("monthly_token_limit")
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, promptKey])
+  @@map("org_ai_settings")
+}
+
+
+model AiPrompt {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  promptKey      PromptKey @map("prompt_key")
+  promptText     String    @map("prompt_text")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, promptKey])
+  @@index([promptKey, organizationId])
+  @@map("ai_prompts")
+}
+
+// ─── Block 7: Reports ─────────────────────────────────────────────────────────
+
+enum ReportType {
+  projects_summary
+  team_load
+  tasks_completion
+  billable_stages
+}
+
+model SavedReport {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  name           String
+  reportType     ReportType @map("report_type")
+  filters        Json       @default("{}")
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
+  @@map("saved_reports")
+}
+
+model AiUsageLog {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  promptKey      PromptKey @map("prompt_key")
+  tokensUsed     Int?      @map("tokens_used")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("ai_usage_logs")
+}
+
+// ─── Block 9: Effort Planning ────────────────────────────────────────────────
+
+// Role-based effort plan per task (Level 1)
+model TaskRoleEffort {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  taskId       String           @map("task_id") @db.Uuid
+  roleId       String           @map("role_id") @db.Uuid
+  plannedHours Decimal          @map("planned_hours") @db.Decimal(8, 2)
+  distribution DistributionRule @default(uniform)
+  // For 'manual' rule: [{ weekStart: "YYYY-MM-DD", pct: number }]
+  manualDistJson Json?          @map("manual_dist_json")
+  note         String?
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  task    Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  role    OrgRole          @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  periods TaskEffortPeriod[]
+
+  @@unique([taskId, roleId])
+  @@index([taskId])
+  @@map("task_role_efforts")
+}
+
+// Pre-calculated weekly effort breakdown (regenerated when task dates or distribution change)
+model TaskEffortPeriod {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roleEffortId String   @map("role_effort_id") @db.Uuid
+  taskId       String   @map("task_id") @db.Uuid
+  roleId       String   @map("role_id") @db.Uuid
+  weekStart    DateTime @map("week_start") @db.Date
+  plannedHours Decimal  @map("planned_hours") @db.Decimal(6, 2)
+
+  roleEffort TaskRoleEffort @relation(fields: [roleEffortId], references: [id], onDelete: Cascade)
+  task       Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  role       OrgRole        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleEffortId, weekStart])
+  @@index([taskId, weekStart])
+  @@index([roleId, weekStart])
+  @@map("task_effort_periods")
+}
+
+// Time log — actual hours per user per task per day (Level 2)
+model TimeEntry {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  taskId    String   @map("task_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  date      DateTime @db.Date
+  hours     Decimal  @db.Decimal(5, 2)
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId, date])
+  @@index([taskId])
+  @@index([userId, date])
+  @@map("time_entries")
+}
+
+// ─── Block 8: Templates & Normalization ──────────────────────────────────────
+
+// Global normalization parameter catalog (org-level)
+model NormParam {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  code           String        // unique code used in formulas, e.g. "pipeline_km"
+  name           String
+  paramType      NormParamType @map("param_type")
+  unit           String?       // e.g. "км", "м²", "этаж"
+  possibleValues Json?         @map("possible_values") // for enum type: ["EPC","EPCM","PMC"]
+  description    String?
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("norm_params")
+}
+
+model ProjectTemplate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  description    String?
+  category       String?
+  version        Int      @default(1)
+  isPublished    Boolean  @default(false) @map("is_published")
+  usageCount     Int      @default(0) @map("usage_count")
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      User?                 @relation("TemplateCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  tasks        TemplateTask[]
+  documents    TemplateDocument[]
+  usages       ProjectTemplateUsage[]
+
+  @@index([organizationId])
+  @@map("project_templates")
+}
+
+model TemplateTask {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateId   String       @map("template_id") @db.Uuid
+  parentId     String?      @map("parent_id") @db.Uuid
+  title        String
+  description  String?
+  phase        String?      // phase/stage label e.g. "Проектирование"
+  roleName     String?      @map("role_name") // role placeholder (not a FK)
+  taskType     TaskType     @default(task) @map("task_type")
+  priority     TaskPriority @default(medium)
+  baseDuration Decimal      @default(1) @map("base_duration") @db.Decimal(8, 2) // work days
+  effortHours  Decimal?     @map("effort_hours") @db.Decimal(8, 2)
+  formulaJson  Json?        @map("formula_json") // NormalizationFormula JSON
+  sortOrder    Int          @default(0) @map("sort_order")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  template     ProjectTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  parent       TemplateTask?        @relation("TemplateTaskHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children     TemplateTask[]       @relation("TemplateTaskHierarchy")
+  dependencies TemplateDependency[] @relation("TemplateDepTask")
+  dependents   TemplateDependency[] @relation("TemplateDepPred")
+  documents    TemplateDocument[]
+  stat         TemplateTaskStat?
+
+  @@index([templateId])
+  @@index([parentId])
+  @@map("template_tasks")
+}
+
+model TemplateDependency {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  taskId        String         @map("task_id") @db.Uuid
+  predecessorId String         @map("predecessor_id") @db.Uuid
+  type          DependencyType @default(FS)
+  lagDays       Int            @default(0) @map("lag_days")
+
+  task        TemplateTask @relation("TemplateDepTask", fields: [taskId], references: [id], onDelete: Cascade)
+  predecessor TemplateTask @relation("TemplateDepPred", fields: [predecessorId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, predecessorId])
+  @@index([taskId])
+  @@map("template_dependencies")
+}
+
+model TemplateDocument {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateId  String  @map("template_id") @db.Uuid
+  taskId      String? @map("task_id") @db.Uuid
+  name        String
+  description String?
+  isRequired  Boolean @default(false) @map("is_required")
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  template ProjectTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  task     TemplateTask?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([templateId])
+  @@map("template_documents")
+}
+
+model ProjectTemplateUsage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateId     String   @map("template_id") @db.Uuid
+  projectId      String   @map("project_id") @db.Uuid
+  scalingParams  Json     @default("{}") @map("scaling_params") // param values used
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  template ProjectTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  project  Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("project_template_usages")
+}
+
+// Running statistics per template task (updated when project archived)
+model TemplateTaskStat {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateTaskId  String   @unique @map("template_task_id") @db.Uuid
+  sampleCount     Int      @default(0) @map("sample_count")
+  avgPlanDays     Decimal? @map("avg_plan_days") @db.Decimal(8, 2)
+  avgActualDays   Decimal? @map("avg_actual_days") @db.Decimal(8, 2)
+  avgDeviationPct Decimal? @map("avg_deviation_pct") @db.Decimal(8, 2)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  templateTask TemplateTask @relation(fields: [templateTaskId], references: [id], onDelete: Cascade)
+
+  @@map("template_task_stats")
+}
+
+// ─── Block 7: Analytics & Feedback ───────────────────────────────────────────
+
+model FeatureUsageLog {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  feature        FeatureKey
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@map("feature_usage_logs")
+}
+
+model Feedback {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  type           FeedbackType
+  text           String
+  screenContext  String?      @map("screen_context")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("feedback")
+}
+
+// ─── Block 9: Documents ───────────────────────────────────────────────────────
+
+model DocumentTypeCategory {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String   @unique
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+
+  documentTypes DocumentType[]
+
+  @@map("document_type_categories")
+}
+
+model DocumentType {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  categoryId     String    @map("category_id") @db.Uuid
+  name           String
+  code           String?
+  isSystem       Boolean   @default(false) @map("is_system")
+  isArchived     Boolean   @default(false) @map("is_archived")
+  sortOrder      Int       @default(0) @map("sort_order")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  organization  Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category      DocumentTypeCategory @relation(fields: [categoryId], references: [id])
+  documents     Document[]
+  accessRules   DocumentAccessRule[]
+
+  @@index([organizationId])
+  @@map("document_types")
+}
+
+model Document {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  title          String
+  description    String?
+  documentTypeId String             @map("document_type_id") @db.Uuid
+  parentType     DocumentParentType @map("parent_type")
+  parentId       String             @map("parent_id") @db.Uuid
+  projectId      String?            @map("project_id") @db.Uuid
+  createdBy      String             @map("created_by") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime           @default(now()) @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?          @map("deleted_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id])
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  creator      User         @relation("DocumentCreator", fields: [createdBy], references: [id])
+  versions     DocumentVersion[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([parentType, parentId])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  documentId    String   @map("document_id") @db.Uuid
+  versionNumber Int      @map("version_number")
+  fileName      String   @map("file_name")
+  fileSize      BigInt?  @map("file_size")
+  mimeType      String?  @map("mime_type")
+  storagePath   String?  @map("storage_path")
+  externalId    String?  @map("external_id")
+  externalUrl   String?  @map("external_url")
+  checksum      String?
+  comment       String?
+  createdBy     String   @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  creator  User             @relation("VersionCreator", fields: [createdBy], references: [id])
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId])
+  @@map("document_versions")
+}
+
+model DocumentAccessRule {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  projectId      String?   @map("project_id") @db.Uuid
+  documentTypeId String?   @map("document_type_id") @db.Uuid
+  orgRoleId      String    @map("org_role_id") @db.Uuid
+  canView        Boolean   @default(true) @map("can_view")
+  canUpload      Boolean   @default(false) @map("can_upload")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  documentType DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+  orgRole      OrgRole       @relation(fields: [orgRoleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, projectId])
+  @@map("document_access_rules")
+}
+
+model StorageProviderSetting {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String      @unique @map("organization_id") @db.Uuid
+  storageMode      StorageMode @default(cloud) @map("storage_mode")
+  pluginUrl        String?     @map("plugin_url")
+  pluginApiKeyHash String?     @map("plugin_api_key_hash")
+  pluginVerifiedAt DateTime?   @map("plugin_verified_at") @db.Timestamptz
+  pluginVersion    String?     @map("plugin_version")
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime    @default(now()) @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("storage_provider_settings")
+}

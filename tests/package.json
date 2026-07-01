@@ -1,0 +1,22 @@
+{
+  "name": "tests",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test --config=playwright.config.js",
+    "test:headed": "playwright test --config=playwright.config.js --headed",
+    "test:ui": "playwright test --config=playwright.config.js --ui",
+    "test:auth": "playwright test --config=playwright.config.js specs/01-auth.spec.js",
+    "test:nav": "playwright test --config=playwright.config.js specs/02-navigation.spec.js",
+    "test:projects": "playwright test --config=playwright.config.js specs/03-projects.spec.js",
+    "test:report": "playwright show-report report"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.61.0"
+  }
+}
